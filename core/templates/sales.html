@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>销售开单</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
+    <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+    <style>
+        body { background-color: #f3f4f6; color: #1f2937; min-height: 100vh; padding-bottom: 100px; font-family: -apple-system, sans-serif; }
+        .check-circle { width: 22px; height: 22px; border: 2px solid #d1d5db; border-radius: 50%; display: flex; items-center; justify-content: center; transition: all 0.2s; }
+        .check-circle.active { background: #10b981; border-color: #10b981; color: white; }
+        .modal-mask { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); z-index: 50; display: flex; align-items: center; justify-content: center; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="p-4 max-w-md mx-auto">
+    <div id="app" v-cloak>
+        
+        <div class="flex items-center justify-between mb-4 sticky top-0 z-10 bg-[#f3f4f6] py-2">
+            <a href="/" class="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center text-gray-600 active:bg-gray-100">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </a>
+            <h1 class="text-lg font-bold text-gray-800">销售列表</h1>
+            <div class="w-10"></div>
+        </div>
+
+        <div class="bg-white p-3 rounded-2xl shadow-sm mb-4 sticky top-16 z-10">
+            <input v-model="keyword" placeholder="🔍 搜索型号 / ZenCode..." class="w-full p-3 rounded-xl bg-gray-50 border-none outline-none text-sm focus:ring-2 ring-green-500 transition">
+        </div>
+
+        <div class="space-y-3">
+            <div v-for="p in filteredList" :key="p.id" @click="toggleSelect(p)" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-3 items-start active:bg-green-50 transition relative overflow-hidden">
+                <div class="check-circle mt-1" :class="{active: selectedIds.includes(p.id)}">
+                    <svg v-if="selectedIds.includes(p.id)" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-start">
+                        <span class="font-bold text-gray-800 text-sm truncate pr-2">[[ p.name ]]</span>
+                        <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">[[ p.zencode ]]</span>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1 truncate">
+                        [[ p.cpu ]] [[ p.gpu ]] [[ p.ram ]]
+                    </div>
+                    <div class="mt-2 flex justify-between items-center">
+                        <span class="text-xs text-gray-400">底:¥[[ p.peer_price ]]</span>
+                        <div class="flex items-center gap-1" @click.stop>
+                            <span class="text-xs text-green-600 font-bold">卖:¥</span>
+                            <input type="number" v-model="sellPrices[p.id]" class="w-20 p-1 text-right text-sm font-bold border-b border-gray-300 focus:border-green-500 outline-none bg-transparent" placeholder="0">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="filteredList.length === 0" class="text-center py-10 text-gray-400 text-xs">
+                暂无可售库存
+            </div>
+        </div>
+
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between items-center shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
+            <div>
+                <div class="text-xs text-gray-500">已选 [[ selectedIds.length ]] 台</div>
+                <div class="text-xl font-bold text-green-600">¥ [[ totalPrice ]]</div>
+            </div>
+            <button @click="openCheckout" :disabled="selectedIds.length===0" class="bg-green-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-200 active:scale-95 transition disabled:opacity-50">
+                结算
+            </button>
+        </div>
+
+        <div v-if="showCheckout" class="modal-mask">
+            <div class="bg-white p-6 rounded-2xl w-80 shadow-2xl animate-bounce-in relative">
+                <h3 class="font-bold text-lg mb-4 text-gray-800">确认出库</h3>
+                
+                <div class="mb-3">
+                    <label class="text-xs text-gray-400 mb-1 block">客户 (必选)</label>
+                    <div class="flex gap-2">
+                        <select v-model="saleForm.contact_id" class="flex-1 p-2 rounded-lg border border-gray-300 text-sm bg-white outline-none">
+                            <option value="" disabled>请选择...</option>
+                            <option v-for="c in contacts" :value="c.id">[[ c.name ]] <span v-if="c.phone">([[ c.phone ]])</span></option>
+                        </select>
+                        <button @click="showAddModal=true" class="bg-green-100 text-green-600 px-3 rounded-lg font-bold text-lg">+</button>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 p-3 rounded-xl border border-gray-200 mb-4">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-500">应收总额</span>
+                        <span class="font-bold">¥ [[ totalPrice ]]</span>
+                    </div>
+                    
+                    <div class="relative mb-2">
+                        <span class="absolute left-3 top-2 text-gray-500 text-sm">实收</span>
+                        <input type="number" v-model="saleForm.received_amount" class="w-full p-2 pl-12 rounded border border-gray-300 text-sm font-bold text-green-600 focus:border-green-500 outline-none">
+                    </div>
+
+                    <div class="text-xs mb-2">
+                        <span v-if="debtAmount > 0" class="text-red-500 font-bold">⚠️ 剩余 ¥[[ debtAmount ]] 计入应收账款</span>
+                        <span v-else-if="saleForm.received_amount == 0" class="text-red-500 font-bold">⚠️ 全额挂账</span>
+                        <span v-else class="text-green-600 font-bold">✅ 全额现结</span>
+                    </div>
+
+                    <div v-if="saleForm.received_amount > 0" class="animate-fade-in">
+                        <select v-model="saleForm.account_id" class="w-full p-2 rounded border border-gray-300 text-sm bg-white outline-none">
+                            <option value="" disabled>收款账户 (必选)</option>
+                            <option v-for="acc in accounts" :value="acc.id">[[ acc.name ]]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-4">
+                    <button @click="showCheckout=false" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-600">取消</button>
+                    <button @click="confirmSubmit" :disabled="loading" class="flex-1 py-3 bg-green-600 rounded-xl font-bold text-white shadow-lg shadow-green-200">
+                        [[ loading ? '处理中...' : '确认成交' ]]
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showAddModal" class="modal-mask" style="z-index: 60;">
+            <div class="bg-white p-6 rounded-2xl w-80 shadow-2xl">
+                <h3 class="font-bold text-lg mb-4 text-gray-800">新建客户</h3>
+                <div class="space-y-3">
+                    <input v-model="newContact.name" placeholder="姓名 (必填)" class="w-full p-3 rounded-lg border border-gray-300 text-sm outline-none focus:border-green-500">
+                    <input v-model="newContact.phone" placeholder="电话 (选填)" class="w-full p-3 rounded-lg border border-gray-300 text-sm outline-none focus:border-green-500">
+                    <input v-model="newContact.address" placeholder="地址/档口 (选填)" class="w-full p-3 rounded-lg border border-gray-300 text-sm outline-none focus:border-green-500">
+                </div>
+                <div class="flex gap-2 mt-5">
+                    <button @click="showAddModal=false" class="flex-1 py-2 bg-gray-100 rounded-lg text-sm font-bold text-gray-600">取消</button>
+                    <button @click="addContact" class="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-bold">保存</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        axios.defaults.headers.common['X-CSRFToken'] = '{{ csrf_token }}';
+
+        createApp({
+            data() {
+                return {
+                    products: [], contacts: [], accounts: [], keyword: '',
+                    selectedIds: [], sellPrices: {}, 
+                    showCheckout: false, contact_id: '', account_id: '',
+                    saleForm: { received_amount: '' }, 
+                    showAddModal: false, newContact: { name: '', phone: '', address: '' },
+                    loading: false
+                }
+            },
+            computed: {
+                filteredList() {
+                    if(!this.keyword) return this.products;
+                    const k = this.keyword.toLowerCase();
+                    return this.products.filter(p => (p.name && p.name.toLowerCase().includes(k)) || (p.zencode && p.zencode.toLowerCase().includes(k)));
+                },
+                totalPrice() {
+                    let sum = 0;
+                    this.selectedIds.forEach(id => sum += parseFloat(this.sellPrices[id] || 0));
+                    return sum.toFixed(2);
+                },
+                debtAmount() {
+                    const received = parseFloat(this.saleForm.received_amount || 0);
+                    const total = parseFloat(this.totalPrice);
+                    return (total - received).toFixed(2);
+                }
+            },
+            watch: {
+                showCheckout(val) {
+                    if(val) {
+                        this.saleForm.received_amount = this.totalPrice;
+                        if(!this.account_id && this.accounts.length > 0) this.account_id = this.accounts[0].id;
+                    }
+                }
+            },
+            mounted() { this.loadData(); },
+            methods: {
+                async loadData() {
+                    try {
+                        const [pRes, cRes, aRes] = await Promise.all([
+                            axios.get('/api/products/?status=IN_STOCK'),
+                            axios.get('/api/contacts/'),
+                            axios.get('/api/analysis/accounting/')
+                        ]);
+                        let rawProducts = pRes.data.results || pRes.data;
+                        this.products = rawProducts.filter(p => p.status === 'IN_STOCK');
+                        this.contacts = cRes.data.results || cRes.data;
+                        this.accounts = aRes.data.accounts || [];
+                    } catch(e){}
+                },
+                toggleSelect(p) {
+                    const idx = this.selectedIds.indexOf(p.id);
+                    if (idx > -1) {
+                        this.selectedIds.splice(idx, 1);
+                        delete this.sellPrices[p.id];
+                    } else {
+                        this.selectedIds.push(p.id);
+                        this.sellPrices[p.id] = p.retail_price || p.peer_price || p.cost_price;
+                    }
+                },
+                async addContact() {
+                    if(!this.newContact.name) return alert('姓名必填');
+                    try {
+                        const res = await axios.post('/api/contacts/', this.newContact);
+                        await this.loadData();
+                        this.saleForm.contact_id = res.data.id; 
+                        this.showAddModal = false;
+                        this.newContact = { name: '', phone: '', address: '' };
+                    } catch(e) { alert('新建失败'); }
+                },
+                openCheckout() {
+                    if(this.selectedIds.length === 0) return;
+                    this.showCheckout = true;
+                },
+                async confirmSubmit() {
+                    if(!this.saleForm.contact_id) return alert('请选择客户');
+                    
+                    const received = parseFloat(this.saleForm.received_amount || 0);
+                    if(received > 0 && !this.saleForm.account_id) return alert('请选择收款账户');
+                    
+                    this.loading = true;
+                    try {
+                        // 批量处理逻辑：第一笔订单记录实收金额，后续订单记录实收为0
+                        // 目的：资金账户只增加一次汇总金额，客户余额则扣减总差额，保证账目平衡
+                        for (let i = 0; i < this.selectedIds.length; i++) {
+                            const id = this.selectedIds[i];
+                            const currentReceived = (i === 0) ? received : 0;
+                            
+                            await axios.post(`/api/products/${id}/sell/`, {
+                                contact_id: this.saleForm.contact_id,
+                                price: this.sellPrices[id],
+                                received_amount: currentReceived,
+                                account_id: this.saleForm.account_id
+                            });
+                        }
+                        alert('出库成功');
+                        window.location.reload();
+                    } catch(e) {
+                        alert('出错: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            },
+            compilerOptions: { delimiters: ['[[', ']]'] }
+        }).mount('#app');
+    </script>
+</body>
+</html>

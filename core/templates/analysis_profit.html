@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利润分析</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
+    <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+    <style>[v-cloak]{display:none} table { font-size: 13px; }</style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 font-sans">
+    <div id="app" v-cloak>
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center">
+                <a href="/" class="text-2xl mr-3 text-gray-500 hover:text-gray-800">←</a>
+                <h1 class="text-xl font-bold text-gray-800">销售利润报表</h1>
+            </div>
+            <select v-model="filter" @change="loadData" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm shadow-sm outline-none">
+                <option value="all">全部时间</option>
+                <option value="month">本月</option>
+                <option value="year">本年</option>
+            </select>
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+            <div class="grid grid-cols-3 gap-4 text-center divide-x divide-gray-100">
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">销售额</div>
+                    <div class="font-bold text-gray-800 text-lg">¥[[ summary.sales ]]</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">成本</div>
+                    <div class="font-bold text-gray-800 text-lg">¥[[ summary.cost ]]</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">毛利润</div>
+                    <div class="font-bold text-yellow-600 text-lg">¥[[ summary.profit ]]</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 text-gray-500 border-b border-gray-200 uppercase text-xs">
+                    <tr>
+                        <th class="p-4 font-medium">商品 / 单号</th>
+                        <th class="p-4 text-right font-medium">售价 / 利润</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <tr v-for="item in list" :key="item.zencode" class="hover:bg-gray-50 transition">
+                        <td class="p-4">
+                            <div class="font-bold text-gray-800 mb-1">[[ item.name ]]</div>
+                            <div class="text-xs text-gray-400 flex gap-2">
+                                <span class="bg-gray-100 px-1 rounded">[[ item.zencode ]]</span>
+                                <span>[[ item.date ]]</span>
+                            </div>
+                        </td>
+                        <td class="p-4 text-right">
+                            <div class="font-bold text-blue-600">¥[[ item.price ]]</div>
+                            <div class="text-xs font-medium" :class="item.profit >= 0 ? 'text-green-500' : 'text-red-500'">
+                                赚: ¥[[ item.profit ]]
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div v-if="list.length === 0" class="p-10 text-center text-gray-400 text-sm flex flex-col items-center">
+                <span class="text-3xl mb-2">📉</span>
+                暂无销售数据
+            </div>
+        </div>
+        
+        <div class="mt-6 text-center text-xs text-gray-400">
+            统计范围：[[ summary.count ]] 笔已成交订单
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        createApp({
+            data() { return { summary: {}, list: [], filter: 'all' } },
+            mounted() { this.loadData(); },
+            methods: {
+                async loadData() {
+                    try {
+                        const res = await axios.get(`/api/analysis/profit_detail/?period=${this.filter}`);
+                        this.summary = res.data.summary;
+                        this.list = res.data.list;
+                    } catch(e) { console.error(e); }
+                }
+            },
+            compilerOptions: { delimiters: ['[[', ']]'] }
+        }).mount('#app');
+    </script>
+</body>
+</html>

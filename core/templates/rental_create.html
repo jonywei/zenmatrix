@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>新建租赁</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
+    <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+    <style>body { background-color: #f3f4f6; color: #1f2937; } [v-cloak]{display:none}</style>
+</head>
+<body class="p-4 max-w-md mx-auto">
+    <div id="app" v-cloak>
+        <div class="flex items-center mb-6">
+            <a href="/rental/" class="text-gray-500 font-bold text-xl mr-4">←</a>
+            <h1 class="text-xl font-bold">租赁开单</h1>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm p-5 space-y-5">
+            
+            <div>
+                <label class="text-xs font-bold text-gray-400 uppercase mb-1 block">客户 (必选)</label>
+                <select v-model="form.contact_id" class="w-full p-3 rounded-xl border bg-gray-50 outline-none">
+                    <option value="" disabled>请选择...</option>
+                    <option v-for="c in contacts" :value="c.id">[[ c.name ]]</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="text-xs font-bold text-gray-400 uppercase mb-1 block">设备 (必选)</label>
+                <select v-model="form.product_id" class="w-full p-3 rounded-xl border bg-gray-50 outline-none">
+                    <option value="" disabled>请选择在库设备...</option>
+                    <option v-for="p in products" :value="p.id">[[ p.zencode ]] - [[ p.name ]]</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs font-bold text-purple-600 uppercase mb-1 block">押金 (¥)</label>
+                    <input v-model="form.deposit" type="number" class="w-full p-3 rounded-xl border border-purple-200 bg-purple-50 font-bold outline-none">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-400 uppercase mb-1 block">租金单价 (¥)</label>
+                    <input v-model="form.rent_price" type="number" class="w-full p-3 rounded-xl border bg-gray-50 outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs font-bold text-gray-400 uppercase mb-1 block">计费方式</label>
+                    <select v-model="form.rent_strategy" class="w-full p-3 rounded-xl border bg-gray-50 outline-none">
+                        <option value="MONTHLY">按月</option>
+                        <option value="DAILY">按天</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-red-400 uppercase mb-1 block">预计月折旧 (¥)</label>
+                    <input v-model="form.depreciation_monthly" type="number" placeholder="估算掉价" class="w-full p-3 rounded-xl border border-red-100 bg-red-50 text-red-600 outline-none">
+                </div>
+            </div>
+
+            <button @click="submit" :disabled="loading" class="w-full bg-purple-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-200 mt-2">
+                [[ loading ? '提交中...' : '确认出租' ]]
+            </button>
+
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        axios.defaults.headers.common['X-CSRFToken'] = '{{ csrf_token }}';
+
+        createApp({
+            data() {
+                return {
+                    contacts: [], products: [],
+                    form: { contact_id: '', product_id: '', deposit: '', rent_price: '', rent_strategy: 'MONTHLY', depreciation_monthly: '' },
+                    loading: false
+                }
+            },
+            mounted() {
+                axios.get('/api/contacts/').then(res => this.contacts = res.data.results || res.data);
+                axios.get('/api/products/?status=IN_STOCK').then(res => this.products = res.data.results || res.data);
+            },
+            methods: {
+                async submit() {
+                    if(!this.form.contact_id || !this.form.product_id) return alert('请填写完整');
+                    this.loading = true;
+                    try {
+                        await axios.post('/api/rentals/create_lease/', this.form);
+                        alert('开单成功！');
+                        window.location.href = '/rental/';
+                    } catch(e) { alert('失败: ' + (e.response?.data?.error || e.message)); }
+                    finally { this.loading = false; }
+                }
+            },
+            compilerOptions: { delimiters: ['[[', ']]'] }
+        }).mount('#app');
+    </script>
+</body>
+</html>

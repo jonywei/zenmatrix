@@ -1,0 +1,8 @@
+db_data/
+*.sqlite3
+uploads/
+core/media/
+__pycache__/
+*.pyc
+.DS_Store
+.env

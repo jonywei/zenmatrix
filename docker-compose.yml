@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # --- 1. 数据库服务 (已就绪) ---
+  db:
+    image: postgres:15
+    container_name: zen_db
+    restart: always
+    environment:
+      POSTGRES_DB: corezen
+      POSTGRES_USER: zen_admin
+      POSTGRES_PASSWORD: zen_secure_password
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    networks:
+      - zen_net
+
+  # --- 2. Web 服务 (新增) ---
+  web:
+    build: .
+    container_name: zen_web
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app                    # 代码实时同步
+      - ./uploads:/app/uploads    # 图片挂载
+    ports:
+      - "9090:8000"               # 避让端口，使用 9090
+    depends_on:
+      - db
+    networks:
+      - zen_net
+
+networks:
+  zen_net:
+    driver: bridge

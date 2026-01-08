@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会计分析</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
+    <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+    <div id="app">
+        <div class="flex items-center mb-6">
+            <a href="/" class="text-2xl mr-4">←</a>
+            <h1 class="text-xl font-bold">会计分析</h1>
+        </div>
+
+        <div class="bg-blue-600 rounded-2xl p-6 text-white shadow-lg mb-6">
+            <div class="text-blue-200 text-sm mb-1">预估净资产 (Equity)</div>
+            <div class="text-3xl font-bold mb-4">¥ [[ data.net_worth ]]</div>
+            <div class="grid grid-cols-3 gap-2 text-center text-xs border-t border-white/20 pt-4">
+                <div>
+                    <div class="text-blue-200">资金余额</div>
+                    <div class="font-bold">[[ data.cash ]]</div>
+                </div>
+                <div>
+                    <div class="text-blue-200">库存货值</div>
+                    <div class="font-bold">[[ data.stock ]]</div>
+                </div>
+                <div>
+                    <div class="text-blue-200">应收账款</div>
+                    <div class="font-bold">[[ data.receivable ]]</div>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="font-bold text-gray-700 mb-3">资金账户</h3>
+        <div class="space-y-3">
+            <div v-for="acc in data.accounts" class="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center">
+                <div class="font-bold text-gray-800">[[ acc.name ]]</div>
+                <div class="font-mono text-gray-600">¥ [[ acc.balance ]]</div>
+            </div>
+            <div v-if="!data.accounts || data.accounts.length === 0" class="text-center text-gray-400 py-4 text-xs">
+                请去后台添加资金账户 (微信/支付宝/银行卡)
+            </div>
+        </div>
+        
+        <div class="mt-8 text-center text-xs text-gray-400">
+            * 净资产 = 资金余额 + 库存货值 + 应收 - 应付
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        createApp({
+            data() { return { data: {} } },
+            mounted() {
+                axios.get('/api/analysis/accounting/').then(res => this.data = res.data);
+            },
+            compilerOptions: { delimiters: ['[[', ']]'] }
+        }).mount('#app');
+    </script>
+</body>
+</html>
