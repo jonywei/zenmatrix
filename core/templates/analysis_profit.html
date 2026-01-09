@@ -2,98 +2,153 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>利润分析</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>销售利润分析</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
     <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
-    <style>[v-cloak]{display:none} table { font-size: 13px; }</style>
+    <link rel="stylesheet" href="https://cdn.staticfile.net/element-plus/2.3.8/index.min.css" />
+    <script src="https://cdn.staticfile.net/element-plus/2.3.8/index.full.min.js"></script>
+    <script src="https://cdn.staticfile.net/element-plus/2.3.8/locale/zh-cn.min.js"></script>
+    
+    <style>
+        [v-cloak] { display: none; }
+        body { background-color: #f3f4f6; font-family: -apple-system, sans-serif; padding-bottom: 50px; }
+        .el-date-editor { width: 100% !important; }
+        .el-select { width: 100%; }
+    </style>
 </head>
-<body class="bg-gray-50 min-h-screen p-4 font-sans">
+<body class="p-4 max-w-md mx-auto">
     <div id="app" v-cloak>
-        <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center">
-                <a href="/" class="text-2xl mr-3 text-gray-500 hover:text-gray-800">←</a>
-                <h1 class="text-xl font-bold text-gray-800">销售利润报表</h1>
+        <el-config-provider :locale="locale">
+            
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <a href="/" class="text-xl text-gray-500 font-bold">←</a>
+                    <h1 class="text-lg font-bold text-gray-800">利润分析</h1>
+                </div>
             </div>
-            <select v-model="filter" @change="loadData" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm shadow-sm outline-none">
-                <option value="all">全部时间</option>
-                <option value="month">本月</option>
-                <option value="year">本年</option>
-            </select>
-        </div>
 
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
-            <div class="grid grid-cols-3 gap-4 text-center divide-x divide-gray-100">
+            <div class="bg-white p-4 rounded-xl shadow-sm mb-4 space-y-3">
                 <div>
+                    <label class="text-xs font-bold text-gray-400 mb-1 block">统计时间段</label>
+                    <el-date-picker 
+                        v-model="dateRange" 
+                        type="daterange" 
+                        range-separator="至" 
+                        start-placeholder="开始" 
+                        end-placeholder="结束" 
+                        format="YYYY-MM-DD" 
+                        value-format="YYYY-MM-DD" 
+                        size="large" 
+                        @change="loadData">
+                    </el-date-picker>
+                </div>
+                
+                <div>
+                    <label class="text-xs font-bold text-gray-400 mb-1 block">销售人员</label>
+                    <el-select v-model="filterStaff" placeholder="全部员工" clearable size="large" @change="loadData">
+                        <el-option label="全部" value=""></el-option>
+                        <el-option v-for="s in options.staff" :key="s.id" :label="s.name" :value="s.id"></el-option>
+                    </el-select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 mb-6">
+                <div class="bg-white p-3 rounded-xl shadow-sm border-t-4 border-blue-500 text-center">
                     <div class="text-xs text-gray-400 mb-1">销售额</div>
-                    <div class="font-bold text-gray-800 text-lg">¥[[ summary.sales ]]</div>
+                    <div class="font-bold text-gray-800 text-sm">¥[[ formatNum(summary.sales) ]]</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-400 mb-1">成本</div>
-                    <div class="font-bold text-gray-800 text-lg">¥[[ summary.cost ]]</div>
+                <div class="bg-white p-3 rounded-xl shadow-sm border-t-4 border-gray-400 text-center">
+                    <div class="text-xs text-gray-400 mb-1">总成本</div>
+                    <div class="font-bold text-gray-800 text-sm">¥[[ formatNum(summary.cost) ]]</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-400 mb-1">毛利润</div>
-                    <div class="font-bold text-yellow-600 text-lg">¥[[ summary.profit ]]</div>
+                <div class="bg-white p-3 rounded-xl shadow-sm border-t-4 border-yellow-500 text-center">
+                    <div class="text-xs text-gray-400 mb-1">净毛利</div>
+                    <div class="font-bold text-yellow-600 text-lg">¥[[ formatNum(summary.profit) ]]</div>
                 </div>
             </div>
-        </div>
 
-        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-            <table class="w-full text-left">
-                <thead class="bg-gray-50 text-gray-500 border-b border-gray-200 uppercase text-xs">
-                    <tr>
-                        <th class="p-4 font-medium">商品 / 单号</th>
-                        <th class="p-4 text-right font-medium">售价 / 利润</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    <tr v-for="item in list" :key="item.zencode" class="hover:bg-gray-50 transition">
-                        <td class="p-4">
-                            <div class="font-bold text-gray-800 mb-1">[[ item.name ]]</div>
-                            <div class="text-xs text-gray-400 flex gap-2">
-                                <span class="bg-gray-100 px-1 rounded">[[ item.zencode ]]</span>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="p-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <span class="font-bold text-sm text-gray-700">明细清单 ([[ summary.count ]]单)</span>
+                    <button @click="loadData" class="text-blue-600 text-xs">刷新</button>
+                </div>
+                
+                <div class="divide-y divide-gray-50">
+                    <div v-for="item in list" :key="item.id" class="p-3 hover:bg-blue-50 transition">
+                        <div class="flex justify-between items-start mb-1">
+                            <div class="font-bold text-gray-800 text-sm">[[ item.product_name ]]</div>
+                            <div class="font-bold text-blue-600 text-sm">¥[[ formatNum(item.sales) ]]</div>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-gray-400">
+                            <div>
+                                <span class="bg-gray-100 px-1 rounded mr-1">[[ item.zencode ]]</span>
                                 <span>[[ item.date ]]</span>
                             </div>
-                        </td>
-                        <td class="p-4 text-right">
-                            <div class="font-bold text-blue-600">¥[[ item.price ]]</div>
-                            <div class="text-xs font-medium" :class="item.profit >= 0 ? 'text-green-500' : 'text-red-500'">
-                                赚: ¥[[ item.profit ]]
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            
-            <div v-if="list.length === 0" class="p-10 text-center text-gray-400 text-sm flex flex-col items-center">
-                <span class="text-3xl mb-2">📉</span>
-                暂无销售数据
+                            <div :class="item.profit>=0?'text-green-500':'text-red-500'">赚: ¥[[ formatNum(item.profit) ]]</div>
+                        </div>
+                        <div class="mt-2 flex gap-2 justify-end">
+                            <span class="px-2 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded border border-purple-100">销: [[ item.staff ]]</span>
+                            <span class="px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] rounded border border-orange-100">客: [[ item.customer ]]</span>
+                        </div>
+                    </div>
+                    
+                    <div v-if="list.length === 0" class="p-10 text-center text-gray-300 text-xs">
+                        暂无符合条件的销售记录
+                    </div>
+                </div>
             </div>
-        </div>
-        
-        <div class="mt-6 text-center text-xs text-gray-400">
-            统计范围：[[ summary.count ]] 笔已成交订单
-        </div>
+
+        </el-config-provider>
     </div>
 
     <script>
         const { createApp } = Vue
+        const { ElMessage } = ElementPlus
+        
         createApp({
-            data() { return { summary: {}, list: [], filter: 'all' } },
-            mounted() { this.loadData(); },
+            data() {
+                return {
+                    locale: ElementPlusLocaleZhCn,
+                    dateRange: [],
+                    filterStaff: '',
+                    summary: { sales: 0, cost: 0, profit: 0, count: 0 },
+                    list: [],
+                    options: { staff: [] }
+                }
+            },
+            mounted() {
+                // 默认选中本月
+                const end = new Date();
+                const start = new Date();
+                start.setDate(1); 
+                this.dateRange = [start.toISOString().split('T')[0], end.toISOString().split('T')[0]];
+                this.loadData();
+            },
             methods: {
                 async loadData() {
                     try {
-                        const res = await axios.get(`/api/analysis/profit_detail/?period=${this.filter}`);
+                        let url = '/api/analysis/profit_dashboard/?';
+                        if(this.dateRange && this.dateRange.length === 2) {
+                            url += `start_date=${this.dateRange[0]}&end_date=${this.dateRange[1]}&`;
+                        }
+                        if(this.filterStaff) url += `staff_id=${this.filterStaff}&`;
+                        
+                        const res = await axios.get(url);
                         this.summary = res.data.summary;
                         this.list = res.data.list;
-                    } catch(e) { console.error(e); }
-                }
+                        this.options = res.data.options;
+                    } catch(e) { 
+                        console.error(e);
+                        ElMessage.error('加载失败'); 
+                    }
+                },
+                formatNum(num) { return parseFloat(num).toLocaleString(); }
             },
             compilerOptions: { delimiters: ['[[', ']]'] }
-        }).mount('#app');
+        }).use(ElementPlus).mount('#app');
     </script>
 </body>
 </html>

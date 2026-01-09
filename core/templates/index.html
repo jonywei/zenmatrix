@@ -7,146 +7,138 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
     <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
-    <style>
-        body { background-color: #f3f4f6; color: #1f2937; padding-bottom: 90px; font-family: sans-serif; }
-        .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #9ca3af; font-size: 10px; padding: 8px 0; }
-        .nav-item.active { color: #2563eb; }
-        [v-cloak] { display: none; }
-    </style>
+    <style>[v-cloak]{display:none} body{padding-bottom: 100px;}</style>
 </head>
-<body class="max-w-md mx-auto min-h-screen relative">
+<body class="bg-gray-50 min-h-screen font-sans">
     <div id="app" v-cloak>
-        <div class="bg-white px-5 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
-            <h1 class="text-xl font-black text-gray-800 tracking-tight">ZenMatrix</h1>
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400">{% if user.is_authenticated %}{{ user.initials|default:user.username }}{% else %}Guest{% endif %}</span>
-                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
-                    {% if user.is_authenticated %}{{ user.initials|slice:":2" }}{% else %}G{% endif %}
-                </div>
-            </div>
+        
+        <div class="bg-white px-6 pt-8 pb-4 mb-4 shadow-sm flex justify-between items-center sticky top-0 z-20">
+            <h1 class="text-2xl font-black text-gray-900 tracking-tight">ZenMatrix</h1>
+            <a href="/profile/" class="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 font-bold border border-blue-100 shadow-sm">
+                {{ user.initials|default:"WZ" }}
+            </a>
         </div>
 
-        <div class="p-4">
-            <div class="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg shadow-blue-200 relative overflow-hidden">
+        <div class="px-4 space-y-4">
+            
+            <div class="bg-blue-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-200 relative overflow-hidden">
                 <div class="relative z-10">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <div class="text-blue-200 text-xs mb-1">当前库存总货值 (成本)</div>
-                            <div class="text-3xl font-bold font-mono tracking-tight">¥ [[ totalValue || '0.00' ]]</div>
+                    <div class="text-blue-100 text-xs font-bold mb-2">当前库存总货值 (成本)</div>
+                    
+                    <div class="flex justify-between items-end">
+                        <div class="text-3xl font-black mb-1">
+                            ¥ [[ formatNum(data.stock_value) ]]
                         </div>
-                        <a href="/inventory/" class="bg-white/20 px-3 py-1 rounded-full text-xs hover:bg-white/30 transition">库存清单 ></a>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2 pt-4 border-t border-white/10 text-center">
-                        <div><div class="text-blue-200 text-[10px]">在库量</div><div class="font-bold text-lg">[[ totalCount ]]</div></div>
-                        <div><div class="text-blue-200 text-[10px]">今日入</div><div class="font-bold text-lg">[[ todayInCount ]]</div></div>
-                        <div><div class="text-blue-200 text-[10px]">今日销</div><div class="font-bold text-lg">[[ todayOutCount ]]</div></div>
+
+                        <div class="flex gap-2">
+                            <div class="bg-white/10 rounded-lg p-2 text-center min-w-[72px] backdrop-blur-sm border border-white/10">
+                                <div class="text-[10px] text-blue-100 mb-0.5">今日入库</div>
+                                <div class="font-bold text-lg leading-tight">[[ data.today_entry ]]</div>
+                            </div>
+                            <div class="bg-white/10 rounded-lg p-2 text-center min-w-[72px] backdrop-blur-sm border border-white/10">
+                                <div class="text-[10px] text-blue-100 mb-0.5">今日销售</div>
+                                <div class="font-bold text-lg leading-tight">[[ data.today_sale ]]</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                <div class="absolute -right-6 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
             </div>
-        </div>
 
-        <div class="px-4">
-            <h3 class="text-xs font-bold text-gray-400 uppercase mb-2 ml-1">业务操作</h3>
-            <div class="grid grid-cols-4 gap-3 mb-6">
-                <a href="/entry/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
-                    <div class="text-2xl">📦</div><span class="text-xs text-gray-700 font-bold">入库</span>
-                </a>
-                <a href="/sales/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
-                    <div class="text-2xl">💸</div><span class="text-xs text-gray-700 font-bold">销售</span>
-                </a>
+            <div class="grid grid-cols-4 gap-3">
                 <a href="/contact/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
-                    <div class="text-2xl">👥</div><span class="text-xs text-gray-700 font-bold">客户</span>
+                    <span class="text-2xl text-purple-600">👥</span>
+                    <span class="text-xs font-bold text-gray-700">客户</span>
                 </a>
-                <a href="/return/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
-                    <div class="text-2xl">🔄</div><span class="text-xs text-gray-700 font-bold">租赁</span>
+                <a href="/inventory/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
+                    <span class="text-2xl text-orange-500">📦</span>
+                    <span class="text-xs font-bold text-gray-700">库存</span>
                 </a>
-            </div>
-        </div>
-
-        <div class="px-4">
-            <h3 class="text-xs font-bold text-gray-400 uppercase mb-2 ml-1">经营分析</h3>
-            <div class="grid grid-cols-3 gap-3 mb-6">
-                <a href="/analysis/profit/" class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-yellow-400 flex flex-col justify-between h-24 active:scale-95 transition">
-                    <div class="text-yellow-500 font-bold text-sm">📈 利润分析</div>
-                    <div class="text-[10px] text-gray-400">毛利/销量汇总</div>
+                <a href="/rental/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
+                    <span class="text-2xl text-blue-500">🔄</span>
+                    <span class="text-xs font-bold text-gray-700">租赁</span>
                 </a>
-                <a href="/analysis/finance/" class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-400 flex flex-col justify-between h-24 active:scale-95 transition">
-                    <div class="text-red-500 font-bold text-sm">💰 财务分析</div>
-                    <div class="text-[10px] text-gray-400">应收/应付往来</div>
-                </a>
-                <a href="/analysis/account/" class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-400 flex flex-col justify-between h-24 active:scale-95 transition">
-                    <div class="text-blue-500 font-bold text-sm">🏦 会计分析</div>
-                    <div class="text-[10px] text-gray-400">资产/现金余额</div>
+                <a href="/analysis/account/" class="bg-white p-3 rounded-xl shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition h-24">
+                    <span class="text-2xl text-indigo-500">🏦</span>
+                    <span class="text-xs font-bold text-gray-700">资金</span>
                 </a>
             </div>
-        </div>
 
-        <div class="px-4">
-            <h3 class="text-xs font-bold text-gray-400 uppercase mb-2 ml-1">最近动态</h3>
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div v-if="recentLogs.length === 0" class="p-6 text-center text-gray-400 text-xs">暂无数据，快去开单！</div>
-                <div v-for="log in recentLogs" :key="log.id" class="p-3 border-b border-gray-50 flex justify-between items-center last:border-0">
-                    <div class="flex items-center gap-3">
-                        <div :class="log.type === 'SALE' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'" class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold">
-                            [[ log.type === 'SALE' ? '销' : '入' ]]
-                        </div>
-                        <div>
-                            <div class="text-sm font-bold text-gray-800">[[ log.product_name ]]</div>
-                            <div class="text-xs text-gray-400">[[ log.time ]]</div>
-                        </div>
+            <div class="grid grid-cols-2 gap-3">
+                <a href="/analysis/profit/" class="bg-white p-4 rounded-xl shadow-sm flex items-center gap-3 active:bg-gray-50">
+                    <div class="w-10 h-10 rounded-lg bg-yellow-50 text-yellow-600 flex items-center justify-center text-xl">📈</div>
+                    <div>
+                        <div class="text-sm font-bold text-gray-800">利润报表</div>
+                        <div class="text-[10px] text-gray-400">查看毛利</div>
                     </div>
-                    <div class="text-right">
-                        <div class="text-sm font-bold" :class="log.type === 'SALE' ? 'text-green-600' : 'text-gray-800'">[[ log.type === 'SALE' ? '+' : '' ]]¥[[ log.amount ]]</div>
+                </a>
+                <a href="/analysis/finance/" class="bg-white p-4 rounded-xl shadow-sm flex items-center gap-3 active:bg-gray-50">
+                    <div class="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center text-xl">💰</div>
+                    <div>
+                        <div class="text-sm font-bold text-gray-800">欠款往来</div>
+                        <div class="text-[10px] text-gray-400">应收应付</div>
+                    </div>
+                </a>
+            </div>
+
+            <div>
+                <h3 class="text-xs font-bold text-gray-400 mb-3 ml-1">最近动态</h3>
+                <div v-if="data.recent_list && data.recent_list.length > 0" class="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+                    <div v-for="item in data.recent_list" :key="item.id" class="p-4 flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-gray-800 text-sm truncate w-48">[[ item.desc ]]</div>
+                            <div class="text-[10px] text-gray-400 mt-1">[[ item.time ]]</div>
+                        </div>
+                        <div class="font-bold text-sm font-mono" :class="item.is_income ? 'text-red-500' : 'text-green-600'">
+                            [[ item.is_income ? '+' : '-' ]] [[ formatNum(item.amount) ]]
+                        </div>
                     </div>
                 </div>
+                <div v-else class="text-center py-8 text-gray-300 text-xs bg-white rounded-xl">
+                    暂无动态
+                </div>
             </div>
-        </div>
-    </div>
 
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
-        <a href="/" class="nav-item active">
-            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-            <span>工作台</span>
-        </a>
-        <a href="/sales/" class="nav-item">
-            <div class="bg-blue-600 rounded-full w-10 h-10 flex items-center justify-center text-white shadow-lg shadow-blue-300 -mt-4 mb-1">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-            </div>
-            <span>开单</span>
-        </a>
-        <a href="/admin/" class="nav-item">
-            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-            <span>我的</span>
-        </a>
+        </div>
+        
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-6 z-30 flex gap-4 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] max-w-md mx-auto">
+            <a href="/entry/" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition active:scale-95">
+                <span class="text-lg">📥</span> 快速入库
+            </a>
+            <a href="/sales/" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-200 active:scale-95 transition">
+                <span class="text-lg">💸</span> 立即开单
+            </a>
+        </div>
+
     </div>
 
     <script>
         const { createApp } = Vue
+        axios.defaults.headers.common['X-CSRFToken'] = '{{ csrf_token }}';
+
         createApp({
-            data() { return { totalValue: '0.00', totalCount: 0, todayInCount: 0, todayOutCount: 0, recentLogs: [] } },
-            mounted() { this.loadStats(); },
+            data() {
+                return {
+                    // 初始化数据结构
+                    data: { stock_value: 0, stock_count: 0, today_entry: 0, today_sale: 0, recent_list: [] }
+                }
+            },
+            mounted() {
+                this.loadData();
+                // 监听返回，自动刷新
+                document.addEventListener("visibilitychange", () => {
+                    if (document.visibilityState === 'visible') this.loadData();
+                });
+            },
             methods: {
-                async loadStats() {
+                async loadData() {
                     try {
-                        const res = await axios.get('/api/products/');
-                        const products = res.data.results || res.data;
-                        this.totalCount = products.filter(p => p.status === 'IN_STOCK').length;
-                        let val=0, tIn=0, tOut=0;
-                        const todayStr = new Date().toISOString().split('T')[0];
-                        products.forEach(p => {
-                            if(p.status === 'IN_STOCK' && p.cost_price) val += parseFloat(p.cost_price);
-                            if(p.created_at.startsWith(todayStr)) tIn++;
-                            if(p.status === 'SOLD' && p.created_at.startsWith(todayStr)) tOut++; // 简化逻辑
-                        });
-                        this.totalValue = val.toLocaleString('zh-CN', {minimumFractionDigits: 2});
-                        this.todayInCount = tIn; this.todayOutCount = tOut;
-                        if(products.length>0) {
-                            this.recentLogs = products.slice(0,5).map(p => ({
-                                id: p.id, type: p.status==='SOLD'?'SALE':'ENTRY',
-                                product_name: p.name, time: p.created_at.substring(5,16).replace('T',' '), amount: p.sold_price || p.cost_price
-                            }));
-                        }
-                    } catch (e) {}
+                        const res = await axios.get('/api/analysis/dashboard/');
+                        this.data = res.data;
+                    } catch(e) { console.error('数据加载失败', e); }
+                },
+                formatNum(num) {
+                    return parseFloat(num || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2});
                 }
             },
             compilerOptions: { delimiters: ['[[', ']]'] }

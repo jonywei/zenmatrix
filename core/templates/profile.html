@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的账户</title>
+    <link rel="stylesheet" href="https://cdn.staticfile.net/element-plus/2.3.8/index.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
+    <script src="https://cdn.staticfile.net/element-plus/2.3.8/index.full.min.js"></script>
+    <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+    <style>[v-cloak]{display:none}</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app" v-cloak class="max-w-md mx-auto min-h-screen flex flex-col">
+        
+        <div class="bg-white p-6 pb-10 rounded-b-3xl shadow-sm relative z-10">
+            <div class="flex justify-between items-center mb-6">
+                <a href="/" class="text-gray-500 text-lg">← 工作台</a>
+                {% if user.is_staff %}
+                <a href="/admin/" class="text-xs bg-gray-800 text-white px-3 py-1 rounded-full">进入后台 ></a>
+                {% endif %}
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-blue-200">
+                    {{ user.initials|default:user.username|slice:":1"|upper }}
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-gray-800">{{ user.username }}</div>
+                    <div class="text-sm text-gray-500 mt-1">
+                        角色: <span class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs">{{ user.role }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 -mt-4 relative z-20 space-y-3">
+            <div class="bg-white rounded-xl p-4 shadow-sm flex justify-between items-center cursor-pointer active:bg-gray-50">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-yellow-50 text-yellow-600 flex items-center justify-center">📊</div>
+                    <span class="text-sm font-bold text-gray-700">本月业绩</span>
+                </div>
+                <span class="text-gray-400 text-xs">暂无统计 ></span>
+            </div>
+
+            <div class="bg-white rounded-xl p-4 shadow-sm flex justify-between items-center cursor-pointer active:bg-gray-50" @click="changePwd">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center">🔒</div>
+                    <span class="text-sm font-bold text-gray-700">修改密码</span>
+                </div>
+                <span class="text-gray-400 text-xs">></span>
+            </div>
+        </div>
+
+        <div class="p-4 mt-auto">
+            <button @click="logout" class="w-full bg-white border border-red-200 text-red-500 py-3 rounded-xl font-bold hover:bg-red-50 transition">
+                退出登录
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        const { ElMessage, ElMessageBox } = ElementPlus
+        axios.defaults.headers.common['X-CSRFToken'] = '{{ csrf_token }}';
+
+        createApp({
+            methods: {
+                async logout() {
+                    if(confirm('确定要退出吗？')) {
+                        await axios.get('/api/logout/');
+                        window.location.href = '/login/';
+                    }
+                },
+                async changePwd() {
+                    const pwd = prompt("请输入新密码");
+                    if(pwd) {
+                        try {
+                            await axios.post('/api/change_password/', {password: pwd});
+                            alert('修改成功，请重新登录');
+                            window.location.href = '/login/';
+                        } catch(e) { alert('修改失败'); }
+                    }
+                }
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

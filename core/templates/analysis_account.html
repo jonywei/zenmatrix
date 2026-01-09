@@ -2,63 +2,132 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>会计分析</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>会计资金分析</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
     <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.staticfile.net/element-plus/2.3.8/index.min.css" />
+    <script src="https://cdn.staticfile.net/element-plus/2.3.8/index.full.min.js"></script>
+    
+    <style>
+        [v-cloak] { display: none; }
+        body { background-color: #f3f4f6; font-family: -apple-system, sans-serif; padding-bottom: 50px; }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
-    <div id="app">
-        <div class="flex items-center mb-6">
-            <a href="/" class="text-2xl mr-4">←</a>
-            <h1 class="text-xl font-bold">会计分析</h1>
-        </div>
-
-        <div class="bg-blue-600 rounded-2xl p-6 text-white shadow-lg mb-6">
-            <div class="text-blue-200 text-sm mb-1">预估净资产 (Equity)</div>
-            <div class="text-3xl font-bold mb-4">¥ [[ data.net_worth ]]</div>
-            <div class="grid grid-cols-3 gap-2 text-center text-xs border-t border-white/20 pt-4">
-                <div>
-                    <div class="text-blue-200">资金余额</div>
-                    <div class="font-bold">[[ data.cash ]]</div>
-                </div>
-                <div>
-                    <div class="text-blue-200">库存货值</div>
-                    <div class="font-bold">[[ data.stock ]]</div>
-                </div>
-                <div>
-                    <div class="text-blue-200">应收账款</div>
-                    <div class="font-bold">[[ data.receivable ]]</div>
-                </div>
-            </div>
-        </div>
-
-        <h3 class="font-bold text-gray-700 mb-3">资金账户</h3>
-        <div class="space-y-3">
-            <div v-for="acc in data.accounts" class="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center">
-                <div class="font-bold text-gray-800">[[ acc.name ]]</div>
-                <div class="font-mono text-gray-600">¥ [[ acc.balance ]]</div>
-            </div>
-            <div v-if="!data.accounts || data.accounts.length === 0" class="text-center text-gray-400 py-4 text-xs">
-                请去后台添加资金账户 (微信/支付宝/银行卡)
-            </div>
-        </div>
+<body class="p-4 max-w-md mx-auto">
+    <div id="app" v-cloak>
         
-        <div class="mt-8 text-center text-xs text-gray-400">
-            * 净资产 = 资金余额 + 库存货值 + 应收 - 应付
+        <div class="flex items-center gap-3 mb-6">
+            <a href="/" class="text-xl font-bold text-gray-500">←</a>
+            <h1 class="text-lg font-bold text-gray-800">资金与资产</h1>
         </div>
+
+        <div class="bg-gradient-to-r from-blue-600 to-blue-500 rounded-2xl p-6 text-white shadow-lg shadow-blue-200 mb-6 relative overflow-hidden">
+            <div class="relative z-10">
+                <div class="text-blue-100 text-xs mb-1">企业预估净资产</div>
+                <div class="text-3xl font-bold">¥ [[ formatNum(data.net_worth) ]]</div>
+                <div class="mt-4 flex justify-between text-xs text-blue-100 opacity-90">
+                    <div>
+                        <div class="opacity-70">库存货值</div>
+                        <div class="font-bold text-base">¥ [[ formatNum(data.stock) ]]</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="opacity-70">现金结余</div>
+                        <div class="font-bold text-base">¥ [[ formatNum(data.cash) ]]</div>
+                    </div>
+                </div>
+            </div>
+            <div class="absolute -right-6 -bottom-10 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl"></div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="p-3 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">
+                资金账户列表
+            </div>
+            
+            <div v-for="acc in data.accounts" :key="acc.id" @click="openHistory(acc)" class="p-4 border-b border-gray-50 active:bg-gray-50 transition cursor-pointer flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
+                        [[ acc.name.charAt(0) ]]
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-800">[[ acc.name ]]</div>
+                        <div class="text-xs text-gray-400 mt-0.5">点击查流水 ></div>
+                    </div>
+                </div>
+                <div class="text-right font-bold text-gray-800 text-lg">
+                    ¥ [[ formatNum(acc.balance) ]]
+                </div>
+            </div>
+        </div>
+
+        <el-drawer v-model="showDrawer" :title="currentAccount.name + ' - 资金流水'" direction="btt" size="80%">
+            <div class="p-2">
+                <div v-if="history.length === 0" class="text-center text-gray-400 py-10">
+                    暂无资金变动记录
+                </div>
+                
+                <el-timeline v-else>
+                    <el-timeline-item v-for="t in history" :key="t.id" :timestamp="t.date" placement="top" :color="t.sign==='+'?'#10b981':'#ef4444'">
+                        <div class="bg-white border border-gray-100 p-3 rounded-lg shadow-sm">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-gray-800 font-bold">[[ t.type ]]</span>
+                                <span class="font-bold text-lg" :class="t.color">
+                                    [[ t.sign ]] [[ formatNum(t.amount) ]]
+                                </span>
+                            </div>
+                            <div class="text-xs text-gray-500 flex justify-between">
+                                <span>对象: [[ t.target ]]</span>
+                            </div>
+                            <div v-if="t.remark" class="mt-2 text-xs bg-gray-50 p-1.5 rounded text-gray-400">
+                                备注: [[ t.remark ]]
+                            </div>
+                        </div>
+                    </el-timeline-item>
+                </el-timeline>
+            </div>
+        </el-drawer>
+
     </div>
 
     <script>
         const { createApp } = Vue
+        const { ElMessage } = ElementPlus
+        
         createApp({
-            data() { return { data: {} } },
-            mounted() {
-                axios.get('/api/analysis/accounting/').then(res => this.data = res.data);
+            data() {
+                return {
+                    data: { net_worth: 0, stock: 0, cash: 0, accounts: [] },
+                    showDrawer: false,
+                    currentAccount: {},
+                    history: []
+                }
+            },
+            mounted() { this.loadData(); },
+            methods: {
+                async loadData() {
+                    try {
+                        const res = await axios.get('/api/analysis/accounting/');
+                        this.data = res.data;
+                    } catch(e) { ElMessage.error('加载失败'); }
+                },
+                async openHistory(acc) {
+                    this.currentAccount = acc;
+                    this.showDrawer = true;
+                    this.history = [];
+                    try {
+                        const res = await axios.get(`/api/analysis/account_history/?id=${acc.id}`);
+                        this.history = res.data;
+                    } catch(e) { ElMessage.error('流水加载失败'); }
+                },
+                formatNum(num) {
+                    return parseFloat(num || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2});
+                }
             },
             compilerOptions: { delimiters: ['[[', ']]'] }
-        }).mount('#app');
+        }).use(ElementPlus).mount('#app');
     </script>
 </body>
 </html>

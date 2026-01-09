@@ -2,59 +2,174 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>财务分析</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>财务往来分析</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
     <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
-    <style>[v-cloak]{display:none}</style>
+    <link rel="stylesheet" href="https://cdn.staticfile.net/element-plus/2.3.8/index.min.css" />
+    <script src="https://cdn.staticfile.net/element-plus/2.3.8/index.full.min.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        body { background-color: #f3f4f6; font-family: -apple-system, sans-serif; padding-bottom: 50px; }
+        .stat-card { @apply bg-white p-4 rounded-xl shadow-sm border-l-4; }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
+<body class="p-4 max-w-md mx-auto">
     <div id="app" v-cloak>
-        <div class="flex items-center mb-6">
-            <a href="/" class="text-2xl mr-4 text-gray-500 font-bold">←</a>
-            <h1 class="text-xl font-bold">往来财务</h1>
+        
+        <div class="flex items-center gap-3 mb-6">
+            <a href="/" class="text-xl font-bold text-gray-500">←</a>
+            <h1 class="text-lg font-bold text-gray-800">
+                往来账目 
+                <span class="text-xs text-gray-400 font-normal ml-1">(共 [[ contacts.length ]] 人)</span>
+            </h1>
         </div>
 
         <div class="grid grid-cols-2 gap-3 mb-6">
-            <div class="bg-white p-4 rounded-2xl shadow-sm border-t-4 border-red-500">
-                <div class="text-xs text-gray-400">应收 (别人欠我)</div>
-                <div class="text-xl font-bold text-red-500">¥ [[ data.receivable ]]</div>
+            <div class="stat-card border-red-500">
+                <div class="text-xs text-gray-400 mb-1">应收账款 (别人欠我)</div>
+                <div class="text-xl font-bold text-red-500">¥ [[ formatNum(data.receivable) ]]</div>
             </div>
-            <div class="bg-white p-4 rounded-2xl shadow-sm border-t-4 border-green-500">
-                <div class="text-xs text-gray-400">应付 (我欠别人)</div>
-                <div class="text-xl font-bold text-green-500">¥ [[ Math.abs(data.payable) ]]</div>
+            <div class="stat-card border-green-500">
+                <div class="text-xs text-gray-400 mb-1">应付账款 (我欠别人)</div>
+                <div class="text-xl font-bold text-green-500">¥ [[ formatNum(Math.abs(data.payable)) ]]</div>
             </div>
         </div>
 
-        <h3 class="font-bold text-gray-700 mb-3">欠款名单</h3>
-        <div class="space-y-2">
-            <div v-for="c in contacts" :key="c.id" class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center">
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="p-3 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">
+                有余额的往来单位
+            </div>
+            <div v-for="c in contacts" :key="c.id" @click="openDetail(c)" class="p-4 border-b border-gray-50 active:bg-blue-50 transition cursor-pointer flex justify-between items-center">
                 <div>
                     <div class="font-bold text-gray-800">[[ c.name ]]</div>
-                    <div class="text-xs text-gray-400">[[ c.phone ]]</div>
+                    <div class="text-xs text-gray-400 mt-0.5">[[ c.phone || '无电话' ]]</div>
                 </div>
                 <div class="text-right">
-                    <span :class="c.balance > 0 ? 'text-red-500' : 'text-green-500'" class="font-bold">
-                        [[ c.balance > 0 ? '欠我' : '欠他' ]] ¥[[ Math.abs(c.balance) ]]
-                    </span>
+                    <div class="text-sm font-bold" :class="c.balance > 0 ? 'text-red-500' : 'text-green-500'">
+                        [[ c.balance > 0 ? '欠我' : '欠他' ]] ¥[[ formatNum(Math.abs(c.balance)) ]]
+                    </div>
+                    <div class="text-[10px] text-blue-600 mt-1">点击查账 ></div>
                 </div>
             </div>
-            <div v-if="contacts.length === 0" class="text-center text-gray-400 py-10 text-xs">暂无欠款记录</div>
+            <div v-if="contacts.length === 0" class="p-8 text-center text-gray-400 text-xs">
+                暂无欠款记录，账目清爽！
+            </div>
         </div>
+
+        <el-drawer v-model="showDrawer" :title="currentContact.name + ' - 账目详情'" direction="btt" size="85%">
+            <div class="p-2">
+                <div class="flex justify-between items-center mb-4 bg-gray-50 p-3 rounded-lg">
+                    <div>
+                        <div class="text-xs text-gray-500">当前余额</div>
+                        <div class="text-lg font-bold" :class="currentContact.balance > 0 ? 'text-red-500' : 'text-green-500'">
+                            [[ currentContact.balance > 0 ? '欠我' : '欠他' ]] ¥[[ formatNum(Math.abs(currentContact.balance)) ]]
+                        </div>
+                    </div>
+                    <el-button type="primary" size="small" @click="showRepayDialog=true">去结账/核销</el-button>
+                </div>
+                <h3 class="text-xs font-bold text-gray-400 mb-2">资金往来记录</h3>
+                <el-timeline>
+                    <el-timeline-item v-for="t in history" :key="t.id" :timestamp="t.date" placement="top">
+                        <div class="bg-white border border-gray-100 p-2 rounded shadow-sm">
+                            <div class="flex justify-between">
+                                <span class="font-bold text-gray-700">[[ t.type ]]</span>
+                                <span class="font-bold">¥[[ formatNum(t.amount) ]]</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">商品: [[ t.product ]]</div>
+                            <div class="text-xs text-gray-400 mt-1">备注: [[ t.remark ]]</div>
+                        </div>
+                    </el-timeline-item>
+                </el-timeline>
+            </div>
+        </el-drawer>
+
+        <el-dialog v-model="showRepayDialog" title="记一笔 (核销)" width="90%" center>
+            <div class="space-y-3">
+                <div>
+                    <div class="text-xs text-gray-500 mb-1">操作类型</div>
+                    <el-radio-group v-model="repayForm.action_type">
+                        <el-radio-button label="in">收款 (他给我钱)</el-radio-button>
+                        <el-radio-button label="out">付款 (我给他钱)</el-radio-button>
+                    </el-radio-group>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 mb-1">本次金额</div>
+                    <el-input v-model="repayForm.amount" type="number" placeholder="请输入金额">
+                        <template #prefix>¥</template>
+                    </el-input>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 mb-1">资金账户</div>
+                    <el-select v-model="repayForm.account_id" placeholder="进/出哪个账户?" style="width: 100%">
+                        <el-option v-for="acc in accounts" :key="acc.id" :label="acc.name" :value="acc.id"></el-option>
+                    </el-select>
+                </div>
+                <el-input v-model="repayForm.remark" placeholder="备注 (如: 结清1月货款)" size="small"></el-input>
+            </div>
+            <template #footer>
+                <el-button @click="showRepayDialog = false">取消</el-button>
+                <el-button type="primary" @click="submitRepay" :loading="loading">确认核销</el-button>
+            </template>
+        </el-dialog>
+
     </div>
+
     <script>
         const { createApp } = Vue
+        const { ElMessage } = ElementPlus
+        axios.defaults.headers.common['X-CSRFToken'] = '{{ csrf_token }}';
+
         createApp({
-            data() { return { data: {}, contacts: [] } },
-            mounted() {
-                axios.get('/api/analysis/accounting/').then(res => this.data = res.data);
-                axios.get('/api/contacts/').then(res => {
-                    this.contacts = (res.data.results || res.data).filter(c => parseFloat(c.balance) !== 0);
-                });
+            data() {
+                return {
+                    data: { receivable: 0, payable: 0 }, 
+                    contacts: [], accounts: [],
+                    showDrawer: false, showRepayDialog: false,
+                    currentContact: {}, history: [],
+                    repayForm: { action_type: 'in', amount: '', account_id: '', remark: '' },
+                    loading: false
+                }
+            },
+            mounted() { this.loadData(); },
+            methods: {
+                async loadData() {
+                    try {
+                        const [res1, res2, res3] = await Promise.all([
+                            axios.get('/api/analysis/accounting/'),
+                            axios.get('/api/contacts/'),
+                            axios.get('/api/analysis/accounting/')
+                        ]);
+                        this.data = res1.data;
+                        this.contacts = (res2.data.results || res2.data).filter(c => parseFloat(c.balance) !== 0);
+                        this.accounts = res3.data.accounts || [];
+                    } catch(e) { console.error(e); }
+                },
+                async openDetail(c) {
+                    this.currentContact = c;
+                    this.showDrawer = true;
+                    this.repayForm.action_type = c.balance > 0 ? 'in' : 'out';
+                    this.repayForm.amount = Math.abs(c.balance);
+                    const res = await axios.get(`/api/contacts/${c.id}/history/`);
+                    this.history = res.data;
+                },
+                async submitRepay() {
+                    if(!this.repayForm.amount || !this.repayForm.account_id) return ElMessage.warning('请填写完整');
+                    this.loading = true;
+                    try {
+                        await axios.post(`/api/contacts/${this.currentContact.id}/repay/`, this.repayForm);
+                        ElMessage.success('核销成功');
+                        this.showRepayDialog = false;
+                        this.showDrawer = false;
+                        this.loadData();
+                    } catch(e) { ElMessage.error('出错: ' + e.message); } 
+                    finally { this.loading = false; }
+                },
+                formatNum(num) { return parseFloat(num || 0).toLocaleString(); }
             },
             compilerOptions: { delimiters: ['[[', ']]'] }
-        }).mount('#app');
+        }).use(ElementPlus).mount('#app');
     </script>
 </body>
 </html>

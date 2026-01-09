@@ -3,72 +3,179 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>往来管理</title>
+    <title>客户档案 CRM</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <script src="https://cdn.staticfile.net/vue/3.3.4/vue.global.min.js"></script>
     <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.staticfile.net/element-plus/2.3.8/index.min.css" />
+    <script src="https://cdn.staticfile.net/element-plus/2.3.8/index.full.min.js"></script>
+    
     <style>
-        body { background-color: #f3f4f6; color: #1f2937; min-height: 100vh; font-family: -apple-system, sans-serif; }
-        .input-std { background: #fff; border: 1px solid #e5e7eb; padding: 12px; border-radius: 0.75rem; width: 100%; }
         [v-cloak] { display: none; }
+        body { background-color: #f3f4f6; font-family: -apple-system, sans-serif; padding-bottom: 50px; }
+        .contact-card { transition: all 0.2s; }
+        .contact-card:active { transform: scale(0.98); background-color: #f9fafb; }
     </style>
 </head>
 <body class="p-4 max-w-md mx-auto">
     <div id="app" v-cloak>
-
-        <div class="flex items-center justify-between mb-6">
-            <a href="/" class="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center text-gray-600 active:bg-gray-100">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            </a>
-            <h1 class="text-lg font-bold text-gray-800">人脉往来</h1>
-            <div class="w-10"></div>
+        
+        <div class="flex items-center justify-between mb-4 sticky top-0 z-10 bg-[#f3f4f6] py-2">
+            <div class="flex items-center gap-3">
+                <a href="/" class="text-xl font-bold text-gray-500">←</a>
+                <h1 class="text-lg font-bold text-gray-800">客户档案 ([[ contacts.length ]])</h1>
+            </div>
+            <el-button type="primary" circle @click="showAddDialog=true">
+                <span class="text-xl font-bold">+</span>
+            </el-button>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm p-5 mb-5 space-y-3 border border-indigo-100">
-            <h2 class="text-xs font-bold text-indigo-500 uppercase">快速录入</h2>
-            <input v-model="form.name" placeholder="姓名 / 昵称 (必填)" class="input-std">
-            <input v-model="form.phone" placeholder="电话" class="input-std">
-            <input v-model="form.address" placeholder="地址 / 档口" class="input-std">
-            <button @click="addContact" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-200">
-                ➕ 添加客户
-            </button>
+        <div class="bg-white p-3 rounded-2xl shadow-sm mb-4">
+            <el-input v-model="keyword" placeholder="🔍 搜索姓名 / 电话..." clearable size="large"></el-input>
         </div>
 
         <div class="space-y-3">
-            <div v-for="c in contacts" :key="c.id" class="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border border-gray-100">
-                <div>
-                    <div class="font-bold text-gray-800 text-lg">[[ c.name ]]</div>
-                    <div class="text-xs text-gray-400">[[ c.phone ]] [[ c.address ]]</div>
-                </div>
-                <div class="text-right">
-                    <div class="text-xs text-gray-400">当前账目</div>
-                    <div :class="c.balance > 0 ? 'text-red-500' : 'text-green-500'" class="font-mono font-bold text-lg">
-                        <span class="text-xs font-normal">[[ c.balance > 0 ? '欠我' : '我欠' ]]</span>
-                        ¥[[ Math.abs(c.balance) ]]
+            <div v-for="c in filteredList" :key="c.id" @click="openDetail(c)" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center contact-card cursor-pointer">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                        [[ c.name.charAt(0) ]]
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-800">
+                            [[ c.name ]]
+                            <span v-if="c.balance < 0" class="ml-1 text-[10px] bg-red-100 text-red-500 px-1 rounded">欠款</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-0.5">[[ c.phone || '暂无电话' ]]</div>
                     </div>
                 </div>
+                <div class="text-gray-300">›</div>
+            </div>
+            
+            <div v-if="filteredList.length === 0" class="p-10 text-center text-gray-400 text-xs">
+                暂无客户，点右上角添加
             </div>
         </div>
+
+        <el-drawer v-model="showDrawer" :title="current.name" direction="btt" size="90%">
+            <div class="p-2 space-y-4">
+                
+                <div class="bg-gray-50 p-4 rounded-xl space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 text-xs">电话</span>
+                        <a :href="'tel:'+current.phone" class="text-blue-600 font-bold text-sm">[[ current.phone || '-' ]] 📞</a>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 text-xs">地址/档口</span>
+                        <span class="text-gray-800 text-sm">[[ current.address || '-' ]]</span>
+                    </div>
+                    <div class="flex justify-between items-center pt-2 border-t border-gray-200 mt-2">
+                        <span class="text-gray-500 text-xs">当前余额</span>
+                        <span class="font-bold text-lg" :class="current.balance > 0 ? 'text-red-500' : 'text-green-500'">
+                            [[ current.balance > 0 ? '欠我' : '欠他' ]] ¥[[ formatNum(Math.abs(current.balance)) ]]
+                        </span>
+                    </div>
+                </div>
+
+                <el-tabs v-model="activeTab" class="w-full">
+                    <el-tab-pane label="交易记录" name="history">
+                        <el-timeline class="mt-4">
+                            <el-timeline-item v-for="h in history" :key="h.id" :timestamp="h.date" placement="top" :color="getColor(h.type)">
+                                <div class="bg-white border border-gray-100 p-3 rounded shadow-sm">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="font-bold text-gray-700">[[ h.type ]]</span>
+                                        <span class="font-bold" :class="h.type.includes('收入')?'text-green-600':'text-gray-800'">
+                                            ¥[[ formatNum(h.amount) ]]
+                                        </span>
+                                    </div>
+                                    <div class="text-xs text-gray-500">商品: [[ h.product ]]</div>
+                                    <div class="text-xs text-gray-400 mt-1 bg-gray-50 p-1 rounded">备注: [[ h.remark ]]</div>
+                                </div>
+                            </el-timeline-item>
+                        </el-timeline>
+                        <div v-if="history.length===0" class="text-center text-gray-300 text-xs py-4">暂无交易记录</div>
+                    </el-tab-pane>
+                </el-tabs>
+
+            </div>
+        </el-drawer>
+
+        <el-dialog v-model="showAddDialog" title="新建档案" width="90%" center>
+            <div class="space-y-3">
+                <el-input v-model="newForm.name" placeholder="姓名/昵称 (必填)"></el-input>
+                <el-input v-model="newForm.phone" placeholder="联系电话"></el-input>
+                <el-input v-model="newForm.address" placeholder="地址/档口号"></el-input>
+            </div>
+            <template #footer>
+                <el-button @click="showAddDialog = false">取消</el-button>
+                <el-button type="primary" @click="addContact">保存</el-button>
+            </template>
+        </el-dialog>
 
     </div>
 
     <script>
         const { createApp } = Vue
+        const { ElMessage } = ElementPlus
         axios.defaults.headers.common['X-CSRFToken'] = '{{ csrf_token }}';
 
         createApp({
-            data() { return { form: { name: '', phone: '', address: '' }, contacts: [] } },
-            mounted() { this.loadContacts(); },
+            data() {
+                return {
+                    contacts: [], keyword: '',
+                    showDrawer: false, showAddDialog: false,
+                    current: {}, activeTab: 'history',
+                    history: [],
+                    newForm: { name: '', phone: '', address: '' }
+                }
+            },
+            computed: {
+                filteredList() {
+                    if(!this.keyword) return this.contacts;
+                    const k = this.keyword.toLowerCase();
+                    return this.contacts.filter(c => c.name.toLowerCase().includes(k) || (c.phone && c.phone.includes(k)));
+                }
+            },
+            mounted() { this.loadData(); },
             methods: {
-                async loadContacts() { const res = await axios.get('/api/contacts/'); this.contacts = res.data.results || res.data; },
+                async loadData() {
+                    try {
+                        const res = await axios.get('/api/contacts/');
+                        this.contacts = res.data.results || res.data;
+                    } catch(e) { ElMessage.error('加载失败'); }
+                },
+                async openDetail(c) {
+                    this.current = c;
+                    this.showDrawer = true;
+                    this.history = []; // 清空旧数据
+                    try {
+                        // 复用我们刚刚写的 history 接口
+                        const res = await axios.get(`/api/contacts/${c.id}/history/`);
+                        this.history = res.data;
+                    } catch(e) {}
+                },
                 async addContact() {
-                    if (!this.form.name) return alert('姓名必填');
-                    try { await axios.post('/api/contacts/', this.form); alert('添加成功'); this.form={name:'',phone:'',address:''}; this.loadContacts(); }
-                    catch(e) { alert('添加失败'); }
+                    if(!this.newForm.name) return ElMessage.warning('姓名必填');
+                    try {
+                        await axios.post('/api/contacts/', this.newForm);
+                        ElMessage.success('添加成功');
+                        this.showAddDialog = false;
+                        this.newForm = { name: '', phone: '', address: '' };
+                        this.loadData();
+                    } catch(e) { ElMessage.error('添加失败'); }
+                },
+                formatNum(num) {
+                    return parseFloat(num || 0).toLocaleString();
+                },
+                getColor(type) {
+                    if(type.includes('收入')) return '#10b981'; // 绿
+                    if(type.includes('支出') || type.includes('付款')) return '#ef4444'; // 红
+                    return '#9ca3af'; // 灰
                 }
             },
             compilerOptions: { delimiters: ['[[', ']]'] }
-        }).mount('#app');
+        }).use(ElementPlus).mount('#app');
     </script>
 </body>
 </html>

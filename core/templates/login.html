@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>登录 - ZenMatrix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/axios/1.6.0/axios.min.js"></script>
+</head>
+<body class="bg-gray-100 h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl flex overflow-hidden h-[500px]">
+        <div class="hidden md:flex w-1/2 bg-blue-600 items-center justify-center p-10 text-white flex-col relative">
+            <div class="z-10 text-center">
+                <h1 class="text-4xl font-black mb-4">ZenMatrix</h1>
+                <p class="text-blue-100 text-lg">商业资产核算核心</p>
+            </div>
+            <div class="absolute -top-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+            <div class="absolute bottom-10 right-10 w-60 h-60 bg-white/10 rounded-full blur-3xl"></div>
+        </div>
+
+        <div class="w-full md:w-1/2 p-8 md:p-16 flex flex-col justify-center">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">欢迎回来</h2>
+            <p class="text-sm text-gray-400 mb-8">请使用管理员分发的账号登录</p>
+
+            <form onsubmit="doLogin(event)" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">账号</label>
+                    <input type="text" id="username" class="w-full p-3 rounded-lg border border-gray-300 focus:border-blue-500 outline-none transition" placeholder="请输入工号/用户名">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">密码</label>
+                    <input type="password" id="password" class="w-full p-3 rounded-lg border border-gray-300 focus:border-blue-500 outline-none transition" placeholder="••••••••">
+                </div>
+                <button type="submit" id="btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-lg shadow-blue-200">
+                    立即登录
+                </button>
+            </form>
+            
+            <p class="text-center text-xs text-gray-400 mt-6">
+                Corezen Technlogy &copy; 2026
+            </p>
+        </div>
+    </div>
+
+    <script>
+        async function doLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const btn = document.getElementById('btn');
+            
+            if(!u || !p) return alert('请输入账号密码');
+            
+            btn.innerHTML = '登录中...';
+            btn.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('username', u);
+                formData.append('password', p);
+                
+                const res = await axios.post('/api/login/', formData);
+                if(res.data.status === 'ok') {
+                    window.location.href = '/'; 
+                } else {
+                    alert('登录失败: ' + res.data.msg);
+                    btn.disabled = false;
+                    btn.innerHTML = '立即登录';
+                }
+            } catch(e) {
+                alert('系统错误');
+                btn.disabled = false;
+                btn.innerHTML = '立即登录';
+            }
+        }
+    </script>
+</body>
+</html>

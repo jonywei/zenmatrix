@@ -6,11 +6,17 @@ from django.shortcuts import render
 from django.db import transaction
 from django.db.models import Sum
 from decimal import Decimal
-from .models import Product, Contact, RentalContract, Transaction, CapitalAccount
-from .serializers import ProductSerializer, ContactSerializer, RentalContractSerializer, TransactionSerializer
+from django.contrib.auth import authenticate, login, logout
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
 import datetime
 
-# --- 1. 页面路由 ---
+# 引入 CustomUser
+from .models import Product, Contact, RentalContract, Transaction, CapitalAccount, CustomUser
+from .serializers import ProductSerializer, ContactSerializer, RentalContractSerializer, TransactionSerializer
+
+# --- 页面路由 ---
 def index_page(request): return render(request, 'index.html')
 def entry_page(request): return render(request, 'entry.html')
 def sales_page(request): return render(request, 'sales.html')
@@ -21,20 +27,38 @@ def rental_create_page(request): return render(request, 'rental_create.html')
 def profit_page(request): return render(request, 'analysis_profit.html')
 def finance_page(request): return render(request, 'analysis_finance.html')
 def account_page(request): return render(request, 'analysis_account.html')
+def login_page(request): return render(request, 'login.html')
+def profile_page(request): return render(request, 'profile.html')
 
-# --- 2. 辅助工具 ---
-def generate_zencode(initials, category):
-    now = timezone.now()
-    year = str(now.year)[-2:]
-    month_map = {10:'A', 11:'B', 12:'C'}
-    month = month_map.get(now.month, str(now.month))
-    day = f"{now.day:02d}"
-    start = now.replace(hour=0, minute=0, second=0)
-    count = Product.objects.filter(created_at__gte=start, category=category).count() + 1
-    return f"{year}{month}{day}{initials}{category}{count}"
+# --- 认证 API ---
+@csrf_exempt
+def api_login(request):
+    if request.method == 'POST':
+        try: data = json.loads(request.body)
+        except: data = request.POST
+        user = authenticate(username=data.get('username'), password=data.get('password'))
+        if user:
+            login(request, user)
+            return JsonResponse({'status': 'ok'})
+        return JsonResponse({'status': 'error', 'msg': '账号或密码错误'})
+    return JsonResponse({'status': 'error', 'msg': 'Method not allowed'})
 
-# --- 3. 核心 API ---
+def api_logout(request):
+    logout(request)
+    return JsonResponse({'status': 'ok'})
 
+@csrf_exempt
+def api_change_password(request):
+    if not request.user.is_authenticated: return JsonResponse({'status': 'error'}, status=403)
+    try:
+        data = json.loads(request.body)
+        request.user.set_password(data.get('password'))
+        request.user.save()
+        logout(request)
+        return JsonResponse({'status': 'ok'})
+    except: return JsonResponse({'status': 'error'})
+
+# --- 业务 API ---
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('-created_at')
     serializer_class = ProductSerializer
@@ -42,51 +66,43 @@ class ProductViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'zencode', 'note']
 
     def get_queryset(self):
-        status_param = self.request.query_params.get('status')
-        if status_param:
-            return self.queryset.filter(status=status_param)
+        status = self.request.query_params.get('status')
+        if status: return self.queryset.filter(status=status)
         return self.queryset
 
-    # --- 入库逻辑 ---
     def perform_create(self, serializer):
         user = self.request.user
         initials = getattr(user, 'initials', 'AD')
-        data = self.request.data
+        category = self.request.data.get('category', 'ZX')
+        # ZenCode 生成逻辑
+        year = str(timezone.now().year)[-2:]
+        month_map = {10:'A',11:'B',12:'C'}
+        month = month_map.get(timezone.now().month, str(timezone.now().month))
+        day = f"{timezone.now().day:02d}"
+        start = timezone.now().replace(hour=0, minute=0, second=0)
+        count = Product.objects.filter(created_at__gte=start, category=category).count() + 1
+        zencode = f"{year}{month}{day}{initials}{category}{count}"
         
-        category = serializer.validated_data.get('category', 'ZX')
-        if not serializer.validated_data.get('zencode'):
-            zencode = generate_zencode(initials, category)
-            product = serializer.save(zencode=zencode)
-        else:
-            product = serializer.save()
+        product = serializer.save(zencode=zencode)
 
-        supplier_id = data.get('supplier_id')
-        paid_amount = Decimal(str(data.get('paid_amount', 0) or 0))
-        account_id = data.get('account_id')
-        cost_price = product.cost_price
-
+        supplier_id = self.request.data.get('supplier_id')
+        paid_amount = Decimal(str(self.request.data.get('paid_amount', 0) or 0))
+        account_id = self.request.data.get('account_id')
+        
         if supplier_id and str(supplier_id) != '0':
             try:
                 supplier = Contact.objects.get(id=supplier_id)
                 if paid_amount > 0 and account_id:
                     acc = CapitalAccount.objects.get(id=account_id)
-                    Transaction.objects.create(
-                        contact=supplier, product=product, account=acc,
-                        amount=paid_amount, type='BUY',
-                        operator=user if user.is_authenticated else None,
-                        remark=f"采购实付: {product.name}"
-                    )
+                    Transaction.objects.create(contact=supplier, product=product, account=acc, amount=paid_amount, type='BUY', operator=user, remark=f"采购: {product.name}")
                     acc.current_balance -= paid_amount
                     acc.save()
-                
-                debt = cost_price - paid_amount
+                debt = product.cost_price - paid_amount
                 if debt != 0:
                     supplier.balance -= debt
                     supplier.save()
-            except Exception as e:
-                print(f"记账异常: {e}")
+            except Exception: pass
 
-    # --- 出库逻辑 ---
     @action(detail=True, methods=['post'])
     def sell(self, request, pk=None):
         product = self.get_object()
@@ -95,48 +111,65 @@ class ProductViewSet(viewsets.ModelViewSet):
         contact_id = request.data.get('contact_id')
         account_id = request.data.get('account_id')
         
-        if not contact_id: return Response({'detail': '必须选择客户'}, status=400)
-        if product.status != 'IN_STOCK': return Response({'detail': '商品不在库'}, status=400)
+        if product.status != 'IN_STOCK': return Response({'detail': '非在库商品'}, status=400)
 
         try:
             with transaction.atomic():
                 product.status = 'SOLD'
                 product.sold_price = price
                 product.save()
-                
                 contact = Contact.objects.get(id=contact_id)
-                
                 if received_amount > 0 and account_id:
                     acc = CapitalAccount.objects.get(id=account_id)
-                    Transaction.objects.create(
-                        contact=contact, product=product, account=acc,
-                        amount=received_amount, type='SALE',
-                        operator=request.user if request.user.is_authenticated else None,
-                        remark=f"销售收款: {product.name}"
-                    )
+                    Transaction.objects.create(contact=contact, product=product, account=acc, amount=received_amount, type='SALE', operator=request.user, remark=f"销售: {product.name}")
                     acc.current_balance += received_amount
                     acc.save()
-                
                 debt = price - received_amount
                 if debt != 0:
                     contact.balance += debt
                     contact.save()
-                
                 return Response({'msg': '出库成功'})
-        except Exception as e:
-            return Response({'detail': str(e)}, status=500)
+        except Exception as e: return Response({'detail': str(e)}, status=500)
 
 class ContactViewSet(viewsets.ModelViewSet):
     queryset = Contact.objects.all()
     serializer_class = ContactSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ['name', 'phone', 'address']
+    search_fields = ['name', 'phone']
+
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        contact = self.get_object()
+        txs = Transaction.objects.filter(contact=contact).order_by('-created_at')
+        data = [{'id':t.id, 'date':t.created_at.strftime('%Y-%m-%d'), 'type':t.get_type_display(), 'amount':t.amount, 'product':t.product.name if t.product else '-', 'remark':t.remark, 'operator':t.operator.initials if t.operator else ''} for t in txs]
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def repay(self, request, pk=None):
+        contact = self.get_object()
+        amount = Decimal(str(request.data.get('amount') or 0))
+        acc_id = request.data.get('account_id')
+        action = request.data.get('action_type')
+        if amount <= 0 or not acc_id: return Response({'error': '参数错误'}, 400)
+        try:
+            with transaction.atomic():
+                acc = CapitalAccount.objects.get(id=acc_id)
+                if action == 'in':
+                    Transaction.objects.create(contact=contact, account=acc, amount=amount, type='OTHER', operator=request.user, remark='收款核销')
+                    acc.current_balance += amount
+                    contact.balance -= amount
+                else:
+                    Transaction.objects.create(contact=contact, account=acc, amount=amount, type='BUY', operator=request.user, remark='付款核销')
+                    acc.current_balance -= amount
+                    contact.balance += amount
+                acc.save()
+                contact.save()
+                return Response({'msg': 'ok'})
+        except Exception as e: return Response({'error': str(e)}, 500)
 
 class RentalViewSet(viewsets.ModelViewSet):
     queryset = RentalContract.objects.all().order_by('-id')
     serializer_class = RentalContractSerializer
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['product__zencode', 'contact__name'] 
     
     @action(detail=False, methods=['post'])
     def create_lease(self, request):
@@ -146,10 +179,6 @@ class RentalViewSet(viewsets.ModelViewSet):
                 product = Product.objects.get(id=data['product_id'])
                 contact = Contact.objects.get(id=data['contact_id'])
                 deposit = Decimal(str(data.get('deposit', 0)))
-                
-                if product.status != 'IN_STOCK':
-                    return Response({'error': '该商品不在库'}, status=400)
-
                 RentalContract.objects.create(
                     contact=contact, product=product,
                     start_date=data.get('start_date', timezone.now()),
@@ -159,79 +188,70 @@ class RentalViewSet(viewsets.ModelViewSet):
                     depreciation_monthly=Decimal(str(data.get('depreciation_monthly', 0))),
                     initial_value=product.cost_price or 0
                 )
-
                 product.status = 'RENTED'
                 product.save()
-
                 if deposit > 0:
                     acc = CapitalAccount.objects.first()
                     if acc:
-                        Transaction.objects.create(
-                            contact=contact, product=product, account=acc,
-                            amount=deposit, type='RENT',
-                            remark=f"租赁押金: {product.zencode}"
-                        )
+                        Transaction.objects.create(contact=contact, product=product, account=acc, amount=deposit, type='RENT', remark=f"租赁押金: {product.zencode}")
                         acc.current_balance += deposit
                         acc.save()
-                
                 return Response({'msg': '租赁开单成功'})
-        except Exception as e:
-            return Response({'error': str(e)}, status=500)
+        except Exception as e: return Response({'error': str(e)}, 500)
 
     @action(detail=True, methods=['post'])
     def settle(self, request, pk=None):
         contract = self.get_object()
         end_value = request.data.get('end_value')
         if not end_value: return Response({'error': '必须填写回库评估价'}, status=400)
-        
         try:
             with transaction.atomic():
                 product = contract.product
                 product.cost_price = Decimal(str(end_value))
                 product.status = 'IN_STOCK'
                 product.save()
-                
                 contract.is_active = False
                 contract.save()
-                
                 return Response({'msg': '结算成功'})
-        except Exception as e:
-            return Response({'error': str(e)}, status=500)
+        except Exception as e: return Response({'error': str(e)}, 500)
 
+# --- 报表分析 (核心修复区域) ---
 class AnalysisViewSet(viewsets.ViewSet):
     
+    # 仪表盘
     @action(detail=False)
-    def profit(self, request):
-        period = request.query_params.get('period', 'all')
-        query = Product.objects.filter(status='SOLD')
+    def dashboard(self, request):
+        today = timezone.now().date()
+        stock_val = Product.objects.filter(status='IN_STOCK').aggregate(Sum('cost_price'))['cost_price__sum'] or 0
+        stock_count = Product.objects.filter(status='IN_STOCK').count()
+        today_entry = Product.objects.filter(created_at__date=today).count()
+        today_sale = Transaction.objects.filter(type='SALE', created_at__date=today).count()
         
-        now = timezone.now()
-        if period == 'month':
-            query = query.filter(created_at__month=now.month, created_at__year=now.year)
-        elif period == 'year':
-            query = query.filter(created_at__year=now.year)
-            
-        total_sales = sum([p.sold_price for p in query if p.sold_price]) or 0
-        total_cost = sum([p.cost_price for p in query if p.cost_price]) or 0
-        gross_profit = total_sales - total_cost
-        
+        recent_txs = Transaction.objects.all().select_related('product').order_by('-created_at')[:5]
+        recent_list = []
+        for t in recent_txs:
+            is_income = t.type in ['SALE', 'RENT', 'OTHER']
+            product_name = t.product.name if t.product else (t.remark or '-')
+            recent_list.append({
+                'id': t.id, 'desc': f"{t.get_type_display()} - {product_name}",
+                'amount': t.amount, 'is_income': is_income, 'time': t.created_at.strftime('%m-%d %H:%M')
+            })
         return Response({
-            'total_sales': total_sales,
-            'total_cost': total_cost,
-            'gross_profit': gross_profit,
-            'count': query.count()
+            'stock_value': stock_val, 'stock_count': stock_count,
+            'today_entry': today_entry, 'today_sale': today_sale, 'recent_list': recent_list
         })
-        
+
+    # ⚠️ 利润分析 (改查 Product 表，修复空数据；改查 real_name，修复拼音)
     @action(detail=False)
-    def profit_detail(self, request):
-        period = request.query_params.get('period', 'all')
+    def profit_dashboard(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # 1. 直接查已售商品
         query = Product.objects.filter(status='SOLD').order_by('-created_at')
         
-        now = timezone.now()
-        if period == 'month':
-            query = query.filter(created_at__month=now.month, created_at__year=now.year)
-        elif period == 'year':
-            query = query.filter(created_at__year=now.year)
+        if start_date and end_date:
+            query = query.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
             
         details = []
         sales_sum = 0
@@ -240,24 +260,30 @@ class AnalysisViewSet(viewsets.ViewSet):
         for p in query:
             s = p.sold_price or 0
             c = p.cost_price or 0
+            profit = s - c
             sales_sum += s
             cost_sum += c
             details.append({
-                'zencode': p.zencode,
-                'name': p.name,
+                'id': p.id,
                 'date': p.created_at.strftime('%Y-%m-%d'),
-                'price': s,
-                'profit': s - c
+                'zencode': p.zencode,
+                'product_name': p.name,
+                'customer': '-', 
+                'staff': '-',
+                'sales': s, 'cost': c, 'profit': profit
             })
             
+        # 2. 构建真实姓名列表 (last_name + first_name)
+        raw_users = CustomUser.objects.values('id', 'username', 'last_name', 'first_name')
+        staff_list = []
+        for u in raw_users:
+            real_name = f"{u['last_name']}{u['first_name']}".strip()
+            staff_list.append({'id': u['id'], 'name': real_name if real_name else u['username']})
+        
         return Response({
-            'summary': {
-                'sales': sales_sum, 
-                'cost': cost_sum, 
-                'profit': sales_sum - cost_sum,
-                'count': len(details)
-            },
-            'list': details
+            'summary': {'sales': sales_sum, 'cost': cost_sum, 'profit': sales_sum - cost_sum, 'count': len(details)},
+            'list': details,
+            'options': {'staff': staff_list}
         })
 
     @action(detail=False)
@@ -268,12 +294,19 @@ class AnalysisViewSet(viewsets.ViewSet):
         receivable = Contact.objects.filter(balance__gt=0).aggregate(Sum('balance'))['balance__sum'] or 0
         payable = Contact.objects.filter(balance__lt=0).aggregate(Sum('balance'))['balance__sum'] or 0
         net_worth = total_cash + stock_value + receivable - abs(payable)
-        
         return Response({
-            'cash': total_cash, 
-            'stock': stock_value, 
-            'receivable': receivable, 
-            'payable': payable, 
-            'net_worth': net_worth,
+            'cash': total_cash, 'stock': stock_value, 'receivable': receivable, 'payable': payable, 'net_worth': net_worth,
             'accounts': [{'id': a.id, 'name': a.name, 'balance': a.current_balance} for a in accounts]
         })
+    
+    @action(detail=False)
+    def account_history(self, request):
+        acc_id = request.query_params.get('id')
+        txs = Transaction.objects.filter(account_id=acc_id).order_by('-created_at')
+        data = []
+        for t in txs:
+            sign = '+' if t.type in ['SALE', 'RENT', 'OTHER'] else '-'
+            color = 'text-red-500' if sign == '+' else 'text-green-500'
+            target = t.contact.name if t.contact else (t.product.name if t.product else '-')
+            data.append({'id':t.id, 'date':t.created_at.strftime('%Y-%m-%d'), 'type':t.get_type_display(), 'amount':t.amount, 'sign':sign, 'color':color, 'target':target, 'remark':t.remark})
+        return Response(data)
