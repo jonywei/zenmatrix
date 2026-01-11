@@ -4,13 +4,14 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.shortcuts import render, redirect
 from django.db import transaction
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count
 from decimal import Decimal
 from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 import datetime
+from datetime import timedelta
 
 from .models import Product, Contact, RentalContract, Transaction, CapitalAccount, CustomUser
 from .serializers import ProductSerializer, ContactSerializer, RentalContractSerializer, TransactionSerializer
@@ -92,11 +93,12 @@ class ProductViewSet(viewsets.ModelViewSet):
         if supplier_id and str(supplier_id) != '0':
             try:
                 supplier = Contact.objects.get(id=supplier_id)
-                if paid_amount > 0 and account_id:
+                if account_id:
                     acc = CapitalAccount.objects.get(id=account_id)
                     Transaction.objects.create(contact=supplier, product=product, account=acc, amount=paid_amount, type='BUY', operator=user, remark=f"采购: {product.name}")
-                    acc.current_balance -= paid_amount
-                    acc.save()
+                    if paid_amount > 0:
+                        acc.current_balance -= paid_amount
+                        acc.save()
                 
                 debt = product.cost_price - paid_amount
                 if debt != 0:
@@ -119,11 +121,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                 product.save()
                 contact = Contact.objects.get(id=contact_id)
                 
-                if received_amount > 0 and account_id:
+                if account_id:
                     acc = CapitalAccount.objects.get(id=account_id)
                     Transaction.objects.create(contact=contact, product=product, account=acc, amount=received_amount, type='SALE', operator=request.user, remark=f"销售: {product.name}")
-                    acc.current_balance += received_amount
-                    acc.save()
+                    if received_amount > 0:
+                        acc.current_balance += received_amount
+                        acc.save()
                 else:
                     Transaction.objects.create(contact=contact, product=product, amount=0, type='SALE', operator=request.user, remark=f"销售(挂账): {product.name}")
 
@@ -170,12 +173,10 @@ class ContactViewSet(viewsets.ModelViewSet):
                 return Response({'msg': 'ok'})
         except Exception as e: return Response({'error': str(e)}, 500)
 
-# ⚠️ 核心修复：RentalViewSet
 class RentalViewSet(viewsets.ModelViewSet):
     queryset = RentalContract.objects.all().order_by('-id')
     serializer_class = RentalContractSerializer
     
-    # ⚠️ 1. 补上这个方法，前端的 ?is_active=true 才会生效！
     def get_queryset(self):
         queryset = super().get_queryset()
         is_active = self.request.query_params.get('is_active')
@@ -214,8 +215,13 @@ class RentalViewSet(viewsets.ModelViewSet):
                     remark_txt += f" (押金¥{deposit})"
                 
                 Transaction.objects.create(
-                    contact=contact, product=product, account=acc, 
-                    amount=deposit, type='RENT', operator=request.user, remark=remark_txt
+                    contact=contact, 
+                    product=product, 
+                    account=acc, 
+                    amount=deposit, 
+                    type='RENT', 
+                    operator=request.user, 
+                    remark=remark_txt
                 )
                 
                 if deposit > 0 and acc:
@@ -236,13 +242,9 @@ class RentalViewSet(viewsets.ModelViewSet):
                 product.cost_price = Decimal(str(end_value))
                 product.status = 'IN_STOCK'
                 product.save()
-                
-                # 2. 确保状态置为 False 并保存
                 contract.is_active = False 
                 contract.save()
-                
                 Transaction.objects.create(contact=contract.contact, product=product, amount=0, type='OTHER', operator=request.user, remark=f"租赁归还: {product.zencode}")
-                
                 return Response({'msg': '结算成功'})
         except Exception as e: return Response({'error': str(e)}, 500)
 
@@ -251,6 +253,7 @@ class AnalysisViewSet(viewsets.ViewSet):
     @action(detail=False)
     def dashboard(self, request):
         today = timezone.localtime(timezone.now()).date()
+        
         stock_val = Product.objects.filter(status='IN_STOCK').aggregate(Sum('cost_price'))['cost_price__sum'] or 0
         stock_count = Product.objects.filter(status='IN_STOCK').count()
         today_entry = Product.objects.filter(created_at__date=today).count()
@@ -259,7 +262,35 @@ class AnalysisViewSet(viewsets.ViewSet):
             created_at__date=today
         ).count()
         
-        recent_txs = Transaction.objects.all().select_related('product').order_by('-created_at')[:5]
+        total_sales_amount = Transaction.objects.filter(Q(type='SALE') | Q(type='RENT')).aggregate(Sum('amount'))['amount__sum'] or 0
+
+        # 图表数据：近7天
+        days = []
+        sales_data = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_sum = Transaction.objects.filter(
+                Q(type='SALE') | Q(type='RENT'), 
+                created_at__date=day
+            ).aggregate(Sum('amount'))['amount__sum'] or 0
+            days.append(day.strftime('%m-%d'))
+            sales_data.append(float(day_sum))
+
+        # 图表数据：分类占比
+        cat_map = {'ZJ': '整机', 'SJ': '配件', 'XS': '显示器', 'ZX': '杂项'}
+        category_stats = Product.objects.filter(status='SOLD').values('category').annotate(total=Count('id'))
+        pie_labels = []
+        pie_data = []
+        for item in category_stats:
+            label = cat_map.get(item['category'], item['category'])
+            pie_labels.append(label)
+            pie_data.append(item['total'])
+
+        receivable = Contact.objects.filter(balance__gt=0).aggregate(Sum('balance'))['balance__sum'] or 0
+        payable = Contact.objects.filter(balance__lt=0).aggregate(Sum('balance'))['balance__sum'] or 0
+        total_cash = CapitalAccount.objects.aggregate(Sum('current_balance'))['current_balance__sum'] or 0
+
+        recent_txs = Transaction.objects.all().select_related('product').order_by('-created_at')[:8]
         recent_list = []
         for t in recent_txs:
             is_income = t.type in ['SALE', 'RENT', 'OTHER'] and t.amount > 0
@@ -270,9 +301,22 @@ class AnalysisViewSet(viewsets.ViewSet):
                 'action_type': t.get_type_display(),
                 'amount': t.amount, 'is_income': is_income, 'time': timezone.localtime(t.created_at).strftime('%m-%d %H:%M')
             })
+
         return Response({
             'stock_value': stock_val, 'stock_count': stock_count,
-            'today_entry': today_entry, 'today_sale': today_sale, 'recent_list': recent_list
+            'today_entry': today_entry, 'today_sale': today_sale, 'today_sale_count': today_sale,
+            'cards': {
+                'stock_val': stock_val,
+                'total_sales_amount': total_sales_amount,
+                'receivable': receivable,
+                'payable': abs(payable),
+                'cash': total_cash
+            },
+            'charts': {
+                'trend': {'labels': days, 'data': sales_data},
+                'category': {'labels': pie_labels, 'data': pie_data}
+            },
+            'recent_list': recent_list
         })
 
     @action(detail=False)
