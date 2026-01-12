@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
-
+# 🟢 新增：允许 CSRF 校验的域名白名单
+CSRF_TRUSTED_ORIGINS = ['https://erp.corezen.site']
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-corezen-secret-key-change-me'
 DEBUG = True
