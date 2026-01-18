@@ -1,8 +1,11 @@
-db_data/
-*.sqlite3
-uploads/
-core/media/
 __pycache__/
 *.pyc
+*.log
+db.sqlite3
 .DS_Store
 .env
+/media/
+/uploads/
+/static/
+.idea/
+.vscode/

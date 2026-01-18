@@ -1,37 +1,44 @@
 version: '3.8'
 
 services:
-  # --- 1. 数据库服务 (已就绪) ---
+  # --- 1. 数据库服务 (Zen 独立库) ---
   db:
     image: postgres:15
-    container_name: zen_db
+    container_name: zen_db        # 🟢 改名：防止与老项目冲突
     restart: always
     environment:
-      POSTGRES_DB: corezen
-      POSTGRES_USER: zen_admin
-      POSTGRES_PASSWORD: zen_secure_password
+      POSTGRES_DB: zen            # 🟢 改库名
+      POSTGRES_USER: zen_admin    # 🟢 改用户
+      POSTGRES_PASSWORD: zen_secure_password # 🟢 改密码
     volumes:
       - ./db_data:/var/lib/postgresql/data
     ports:
-      - "15432:5432"
+      - "8668:5432"                  # 🟢 数据库对外端口：8668
     networks:
       - zen_net
 
-  # --- 2. Web 服务 (新增) ---
+  # --- 2. Web 服务 (Zen 后端) ---
   web:
     build: .
-    container_name: zen_web
+    container_name: zen_web       # 🟢 改名
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
-      - .:/app                    # 代码实时同步
-      - ./uploads:/app/uploads    # 图片挂载
+      - .:/app                       # 代码同步
+      - ./uploads:/app/uploads       # 图片存储
     ports:
-      - "9090:8000"               # 避让端口，使用 9090
+      - "9090:8000"                  # 🟢 Web对外端口：9090
     depends_on:
       - db
+    # 🟢 关键：将数据库信息注入 Django
+    environment:
+      - DB_NAME=zen
+      - DB_USER=zen_admin
+      - DB_PASSWORD=zen_secure_password
+      - DB_HOST=zen_db            # 必须指向上面的 db 服务名
+      - DB_PORT=5432                 # 容器内部端口永远是 5432
     networks:
       - zen_net
 
 networks:
-  zen_net:
+  zen_net:                        # 🟢 独立网络
     driver: bridge

@@ -57,10 +57,10 @@ WSGI_APPLICATION = 'corezen_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'corezen',
+        'NAME': 'zen',
         'USER': 'zen_admin',
         'PASSWORD': 'zen_secure_password',
-        'HOST': 'db',  # Docker 内部域名
+        'HOST': 'zen_db',  # Docker 内部域名
         'PORT': 5432,
     }
 }
@@ -98,3 +98,5 @@ SIMPLEUI_CONFIG = {
         'icon': 'fa fa-home'
     }]
 }
+# 🟢 必须添加这一行，否则 collectstatic 无法运行
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
